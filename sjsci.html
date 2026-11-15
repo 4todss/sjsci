@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#080808">
+  <title>sjsci</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; }
+    body {
+      overflow: hidden;
+      background: #080808 url("lvicd.jpg") center center / cover no-repeat fixed;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+    .player {
+      position: fixed;
+      left: 50%;
+      bottom: max(22px, env(safe-area-inset-bottom));
+      transform: translateX(-50%);
+      width: min(230px, calc(100vw - 48px));
+      padding: 11px 14px 10px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 9px;
+      background: rgba(0, 0, 0, .42);
+      border: 1px solid rgba(255,255,255,.13);
+      border-radius: 8px;
+      backdrop-filter: blur(5px);
+      -webkit-backdrop-filter: blur(5px);
+    }
+    .progress {
+      width: 100%;
+      height: 3px;
+      appearance: none;
+      -webkit-appearance: none;
+      border: 0;
+      border-radius: 99px;
+      outline: none;
+      background: rgba(245, 242, 232, .30);
+      cursor: pointer;
+    }
+    .progress::-webkit-slider-thumb {
+      appearance: none;
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: #eeeae0;
+      opacity: 0;
+    }
+    .progress:hover::-webkit-slider-thumb { opacity: 1; }
+    .progress::-moz-range-thumb {
+      width: 7px; height: 7px; border: 0;
+      border-radius: 50%; background: #eeeae0;
+      opacity: 0;
+    }
+    .progress:hover::-moz-range-thumb { opacity: 1; }
+    .progress::-moz-range-track {
+      height: 3px; border-radius: 99px;
+      background: rgba(245, 242, 232, .30);
+    }
+    .progress::-moz-range-progress {
+      height: 3px; border-radius: 99px;
+      background: rgba(245, 242, 232, .92);
+    }
+    .progress::-webkit-slider-runnable-track {
+      height: 3px; border-radius: 99px;
+      background: linear-gradient(to right,
+        rgba(245,242,232,.95) var(--played, 0%),
+        rgba(245,242,232,.30) var(--played, 0%));
+    }
+    .control {
+      width: 30px; height: 30px;
+      padding: 0;
+      border: 0;
+      border-radius: 50%;
+      color: #f0eee8;
+      background: transparent;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      opacity: .92;
+    }
+    .control:hover { opacity: 1; background: rgba(255,255,255,.10); }
+    .control:focus-visible, .progress:focus-visible {
+      outline: 1px solid #f0eee8;
+      outline-offset: 3px;
+    }
+    .control svg { width: 17px; height: 17px; display: block; }
+  </style>
+</head>
+<body>
+  <audio id="audio" src="adjcs.mp3" preload="auto"></audio>
+
+  <div class="player" aria-label="Audio playback">
+    <input id="progress" class="progress" type="range" min="0" max="1000"
+           value="0" step="1" aria-label="Audio position">
+    <button id="toggle" class="control" type="button" aria-label="Play" title="Play">
+      <svg id="symbol" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M8 5v14l11-7z" fill="currentColor"/>
+      </svg>
+    </button>
+  </div>
+
+  <script>
+    (() => {
+      const audio = document.getElementById('audio');
+      const button = document.getElementById('toggle');
+      const symbol = document.getElementById('symbol');
+      const progress = document.getElementById('progress');
+      let seeking = false;
+
+      const icons = {
+        play: '<path d="M8 5v14l11-7z" fill="currentColor"/>',
+        pause: '<path d="M7 5h4v14H7zM14 5h4v14h-4z" fill="currentColor"/>',
+        replay: '<path d="M12 5V2L8 6l4 4V7a5 5 0 1 1-4.9 6H4.98A7 7 0 1 0 12 5z" fill="currentColor"/>'
+      };
+
+      function setButton(state) {
+        symbol.innerHTML = icons[state];
+        const label = state === 'pause' ? 'Pause' : state === 'replay' ? 'Replay' : 'Play';
+        button.setAttribute('aria-label', label);
+        button.title = label;
+      }
+
+      async function startPlayback() {
+        if (audio.ended) audio.currentTime = 0;
+        try {
+          await audio.play();
+        } catch (_) {
+          // Browsers may block audible autoplay until the visitor interacts.
+          setButton('play');
+        }
+      }
+
+      button.addEventListener('click', async () => {
+        if (audio.ended) {
+          audio.currentTime = 0;
+          await startPlayback();
+        } else if (audio.paused) {
+          await startPlayback();
+        } else {
+          audio.pause();
+        }
+      });
+
+      audio.addEventListener('play', () => setButton('pause'));
+      audio.addEventListener('pause', () => {
+        if (!audio.ended) setButton('play');
+      });
+      audio.addEventListener('ended', () => {
+        progress.value = 1000;
+        progress.style.setProperty('--played', '100%');
+        setButton('replay');
+      });
+
+      audio.addEventListener('timeupdate', () => {
+        if (!seeking && Number.isFinite(audio.duration) && audio.duration > 0) {
+          const value = Math.round((audio.currentTime / audio.duration) * 1000);
+          progress.value = value;
+          progress.style.setProperty('--played', `${value / 10}%`);
+        }
+      });
+
+      progress.addEventListener('input', () => {
+        seeking = true;
+        const value = Number(progress.value);
+        progress.style.setProperty('--played', `${value / 10}%`);
+      });
+      progress.addEventListener('change', () => {
+        if (Number.isFinite(audio.duration) && audio.duration > 0) {
+          audio.currentTime = (Number(progress.value) / 1000) * audio.duration;
+        }
+        seeking = false;
+      });
+
+      // Attempt immediate playback on every page visit. Some browsers require
+      // a first user gesture before allowing sound; the control remains available.
+      startPlayback();
+    })();
+  </script>
+</body>
+</html>
